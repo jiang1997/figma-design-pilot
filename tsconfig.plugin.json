@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "lib": ["ES2020"],
+    "types": ["@figma/plugin-typings"]
+  },
+  "include": ["src/plugin/**/*.ts", "src/shared/**/*.ts"]
+}
