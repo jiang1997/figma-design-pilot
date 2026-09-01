@@ -19,7 +19,7 @@ export default defineConfig(({ mode }) => {
       build: {
         lib: {
           entry: resolve(__dirname, 'src/plugin/main.ts'),
-          name: 'FigmaChatbotPlugin',
+          name: 'DesignPilotPlugin',
           formats: ['iife'],
           fileName: () => 'code.js',
         },

@@ -1,6 +1,6 @@
 {
-  "name": "Minimal Plugin",
-  "id": "0000000000000000000",
+  "name": "Design Pilot",
+  "id": "1676514159990337733",
   "api": "1.0.0",
   "main": "dist/code.js",
   "ui": "dist/ui.html",
