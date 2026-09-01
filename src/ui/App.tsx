@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { AgentRunner } from './agent'
 import { ChatStore } from './chat-store'
 import { DEFAULT_BASE_URLS, DEFAULT_MODELS } from './config'
@@ -27,6 +27,17 @@ interface SettingsProps {
   onBaseUrlChange: (value: string) => void
   onModelChange: (value: string) => void
   onApiKeyChange: (value: string) => void
+  onSave: () => void
+}
+
+type AppView = 'chat' | 'history' | 'settings'
+
+function Icon({ children }: { children: ReactNode }) {
+  return (
+    <svg className="icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      {children}
+    </svg>
+  )
 }
 
 function Settings({
@@ -38,43 +49,75 @@ function Settings({
   onBaseUrlChange,
   onModelChange,
   onApiKeyChange,
+  onSave,
 }: SettingsProps) {
+  const [showApiKey, setShowApiKey] = useState(false)
+
   return (
-    <>
-      <select
-        id="provider"
-        aria-label="Model provider"
-        value={provider}
-        onChange={(event) => onProviderChange(event.target.value as ProviderType)}
-      >
-        <option value="anthropic">Anthropic</option>
-        <option value="openai-compatible">OpenAI Compatible</option>
-      </select>
-      <input
-        id="api-url"
-        type="text"
-        value={baseUrl}
-        placeholder={`Base URL (default: ${DEFAULT_BASE_URLS[provider]})`}
-        onChange={(event) => onBaseUrlChange(event.target.value)}
-        onBlur={() => store.updateSettings({ baseUrl: baseUrl.trim() })}
-      />
-      <input
-        id="model"
-        type="text"
-        value={model}
-        placeholder={`Model (default: ${DEFAULT_MODELS[provider]})`}
-        onChange={(event) => onModelChange(event.target.value)}
-        onBlur={() => store.updateSettings({ model: model.trim() })}
-      />
-      <input
-        id="api-key"
-        type="password"
-        value={apiKey}
-        placeholder="API Key"
-        onChange={(event) => onApiKeyChange(event.target.value)}
-        onBlur={() => store.saveApiKey(apiKey.trim())}
-      />
-    </>
+    <section className="settings-page">
+      <div className="page-heading">
+        <h1>API settings</h1>
+        <p>Connect the model you want Design Pilot to use.</p>
+      </div>
+
+      <div className="settings-card">
+        <div className="card-title">Model connection</div>
+
+        <label className="field-label" htmlFor="provider">Provider</label>
+        <div className="select-wrap">
+          <select
+            id="provider"
+            aria-label="Model provider"
+            value={provider}
+            onChange={(event) => onProviderChange(event.target.value as ProviderType)}
+          >
+            <option value="anthropic">Anthropic</option>
+            <option value="openai-compatible">OpenAI Compatible</option>
+          </select>
+        </div>
+
+        <label className="field-label" htmlFor="api-key">API key</label>
+        <div className="secret-field">
+          <input
+            id="api-key"
+            type={showApiKey ? 'text' : 'password'}
+            value={apiKey}
+            placeholder="Enter your API key"
+            onChange={(event) => onApiKeyChange(event.target.value)}
+          />
+          <button
+            className="icon-button reveal-button"
+            type="button"
+            aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
+            onClick={() => setShowApiKey((visible) => !visible)}
+          >
+            {showApiKey ? 'Hide' : 'Show'}
+          </button>
+        </div>
+        <p className="field-help">Stored only in this Figma plugin's local storage.</p>
+
+        <label className="field-label" htmlFor="model">Model</label>
+        <input
+          id="model"
+          type="text"
+          value={model}
+          placeholder={DEFAULT_MODELS[provider]}
+          onChange={(event) => onModelChange(event.target.value)}
+        />
+
+        <label className="field-label" htmlFor="api-url">Base URL</label>
+        <input
+          id="api-url"
+          type="text"
+          value={baseUrl}
+          placeholder={DEFAULT_BASE_URLS[provider]}
+          onChange={(event) => onBaseUrlChange(event.target.value)}
+        />
+        <p className="field-help">Leave model and URL empty to use the defaults.</p>
+      </div>
+
+      <button className="primary-button settings-save" onClick={onSave}>Save settings</button>
+    </section>
   )
 }
 
@@ -89,7 +132,11 @@ function Messages({ messages }: { messages: DisplayMessage[] }) {
   return (
     <div id="messages" ref={containerRef}>
       {messages.length === 0 ? (
-        <div className="hint">Send a message to start a conversation.</div>
+        <div className="empty-chat">
+          <div className="empty-mark">✦</div>
+          <h2>What would you like to design?</h2>
+          <p>I can inspect your selection, create components, update styles, and help refine your Figma file.</p>
+        </div>
       ) : (
         messages.map((message, index) => {
           const roleClass = message.isToolActivity ? 'tool' : message.role
@@ -193,7 +240,7 @@ export function App() {
   const [apiKey, setApiKey] = useState('')
   const [input, setInput] = useState('')
   const [displayMessages, setDisplayMessages] = useState<DisplayMessage[]>([])
-  const [historyOpen, setHistoryOpen] = useState(false)
+  const [activeView, setActiveView] = useState<AppView>('chat')
   const [isSending, setIsSending] = useState(false)
   const [stateLoaded, setStateLoaded] = useState(false)
   const [, setStoreRevision] = useState(0)
@@ -257,7 +304,7 @@ export function App() {
 
     setInput('')
     addDisplayMessage({ role: 'user', text })
-    setHistoryOpen(false)
+    setActiveView('chat')
     setIsSending(true)
     stopRequested.current = false
 
@@ -314,7 +361,7 @@ export function App() {
   const openChat = (id: string) => {
     if (isSending || !store.loadChat(id)) return
     setDisplayMessages(rebuildDisplay(store.history))
-    setHistoryOpen(false)
+    setActiveView('chat')
   }
 
   const deleteChat = (id: string) => {
@@ -326,63 +373,127 @@ export function App() {
     if (isSending) return
     store.startNewChat()
     setDisplayMessages([])
-    setHistoryOpen(false)
+    setActiveView('chat')
   }
+
+  const saveSettings = () => {
+    const trimmedBaseUrl = baseUrl.trim()
+    const trimmedModel = model.trim()
+    const trimmedApiKey = apiKey.trim()
+    setBaseUrl(trimmedBaseUrl)
+    setModel(trimmedModel)
+    setApiKey(trimmedApiKey)
+    store.updateSettings({ provider, baseUrl: trimmedBaseUrl, model: trimmedModel })
+    store.saveApiKey(trimmedApiKey)
+    setActiveView('chat')
+  }
+
+  const apiReady = apiKey.trim().length > 0
 
   return (
     <main className="app">
-      <Settings
-        provider={provider}
-        baseUrl={baseUrl}
-        model={model}
-        apiKey={apiKey}
-        onProviderChange={(nextProvider) => {
-          setProvider(nextProvider)
-          store.updateSettings({ provider: nextProvider })
-        }}
-        onBaseUrlChange={setBaseUrl}
-        onModelChange={setModel}
-        onApiKeyChange={setApiKey}
-      />
-      <div id="chat-bar">
-        <button onClick={() => setHistoryOpen((open) => !open)}>
-          {historyOpen ? 'Back to chat' : 'History'}
-        </button>
-        <button onClick={startNewChat} disabled={isSending}>
-          New chat
-        </button>
-      </div>
+      <header className="topbar">
+        <div className="brand">
+          <span className="brand-mark">D</span>
+          <span>Design Pilot</span>
+        </div>
+        <div className={`connection-status ${apiReady ? 'ready' : ''}`}>
+          <span className="status-dot" />
+          {apiReady ? 'Connected' : 'Not configured'}
+        </div>
+      </header>
 
-      {historyOpen ? (
-        <History
-          chats={store.chats}
-          currentChatId={store.currentChatId}
-          onOpen={openChat}
-          onDelete={deleteChat}
-        />
-      ) : (
-        <Messages messages={displayMessages} />
-      )}
-
-      {approvalCode !== null && <Approval code={approvalCode} onResolve={resolveApproval} />}
-
-      <div id="input-row">
-        <textarea
-          id="chat-input"
-          rows={2}
-          value={input}
-          placeholder="Type a message. Press Enter to send."
-          onChange={(event) => setInput(event.target.value)}
-          onKeyDown={handleInputKeyDown}
-        />
-        <button id="send" disabled={isSending || !stateLoaded} onClick={() => void handleSend()}>
-          {isSending ? 'Sending…' : 'Send'}
-        </button>
-        {isSending && (
-          <button id="stop" onClick={handleStop}>
-            Stop
+      <div className="app-body">
+        <nav className="sidebar" aria-label="Main menu">
+          <button
+            className={`nav-button ${activeView === 'chat' ? 'active' : ''}`}
+            onClick={() => setActiveView('chat')}
+            aria-label="Chat"
+            title="Chat"
+          >
+            <Icon><path d="M4 4.75h12v8.5H9l-3.5 2.5v-2.5H4v-8.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></Icon>
           </button>
-        )}
+          <button
+            className={`nav-button ${activeView === 'history' ? 'active' : ''}`}
+            onClick={() => setActiveView('history')}
+            aria-label="Chat history"
+            title="Chat history"
+          >
+            <Icon><path d="M4.2 6.2A6.5 6.5 0 1 1 3.6 12M4.2 6.2V2.9M4.2 6.2h3.3M10 6.2V10l2.6 1.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></Icon>
+          </button>
+          <button
+            className={`nav-button ${activeView === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveView('settings')}
+            aria-label="API settings"
+            title="API settings"
+          >
+            <Icon><path d="M10 2.8v2M10 15.2v2M17.2 10h-2M4.8 10h-2M15.1 4.9l-1.4 1.4M6.3 13.7l-1.4 1.4M15.1 15.1l-1.4-1.4M6.3 6.3 4.9 4.9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /><circle cx="10" cy="10" r="3" stroke="currentColor" strokeWidth="1.5" /></Icon>
+          </button>
+        </nav>
+
+        <div className="content">
+          {activeView === 'settings' ? (
+            <Settings
+              provider={provider}
+              baseUrl={baseUrl}
+              model={model}
+              apiKey={apiKey}
+              onProviderChange={setProvider}
+              onBaseUrlChange={setBaseUrl}
+              onModelChange={setModel}
+              onApiKeyChange={setApiKey}
+              onSave={saveSettings}
+            />
+          ) : activeView === 'history' ? (
+            <section className="chat-page">
+              <div className="chat-header">
+                <div>
+                  <h1>Chat history</h1>
+                  <p>{store.chats.length} {store.chats.length === 1 ? 'conversation' : 'conversations'}</p>
+                </div>
+                <button className="primary-button compact" onClick={startNewChat} disabled={isSending}>New chat</button>
+              </div>
+              <History chats={store.chats} currentChatId={store.currentChatId} onOpen={openChat} onDelete={deleteChat} />
+            </section>
+          ) : (
+            <section className="chat-page">
+              <div className="chat-header">
+                <div>
+                  <h1>Chat</h1>
+                  <p>{model.trim() || DEFAULT_MODELS[provider]}</p>
+                </div>
+                <button className="primary-button compact" onClick={startNewChat} disabled={isSending}>New chat</button>
+              </div>
+
+              {!apiReady && (
+                <button className="setup-banner" onClick={() => setActiveView('settings')}>
+                  <span><strong>Connect an API to start chatting</strong><small>Add your provider and API key in settings.</small></span>
+                  <span aria-hidden="true">→</span>
+                </button>
+              )}
+
+              <Messages messages={displayMessages} />
+
+              {approvalCode !== null && <Approval code={approvalCode} onResolve={resolveApproval} />}
+
+              <div id="input-row">
+                <textarea
+                  id="chat-input"
+                  rows={2}
+                  value={input}
+                  placeholder="Ask Design Pilot to create or edit anything…"
+                  onChange={(event) => setInput(event.target.value)}
+                  onKeyDown={handleInputKeyDown}
+                />
+                {isSending ? (
+                  <button id="stop" className="send-button" onClick={handleStop} aria-label="Stop">■</button>
+                ) : (
+                  <button id="send" className="send-button" disabled={!stateLoaded || !input.trim()} onClick={() => void handleSend()} aria-label="Send">↑</button>
+                )}
+              </div>
+            </section>
+          )}
+        </div>
       </div>
     </main>
   )
