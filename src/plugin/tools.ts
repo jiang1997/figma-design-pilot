@@ -165,7 +165,8 @@ const TOOLS: ToolDefinition[] = [
     description:
       'Executes JavaScript in the Figma plugin sandbox with the `figma` API. ' +
       'Use for composed operations (e.g. Auto Layout). Code must be self-contained; ' +
-      'explicitly return a value to see it (returned nodes are serialized to {id, name, type}).',
+      'explicitly return a value to see it (returned nodes are summarized with ' +
+      'id, name, type, position, size, fill, text, and child count).',
     input_schema: {
       type: 'object',
       properties: {

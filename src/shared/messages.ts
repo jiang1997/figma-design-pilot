@@ -1,7 +1,18 @@
+// Compact node summary fed back to the model: enough to reason about layout,
+// color, and text without dumping full node properties. Optional fields are
+// omitted (not null) when the node does not have them.
 export interface SerializedNode {
   id: string
   name: string
   type: string
+  x: number
+  y: number
+  width?: number
+  height?: number
+  fill?: string
+  text?: string
+  fontSize?: number
+  childrenCount?: number
 }
 
 export type UIToPluginMessage =

@@ -1,10 +1,57 @@
 import type { SerializedNode } from '../shared/messages'
 
-export const serializeNode = (node: SceneNode): SerializedNode => ({
-  id: node.id,
-  name: node.name,
-  type: node.type,
-})
+const MAX_TEXT_LENGTH = 80
+
+// Figma RGB(0-1) -> '#RRGGBB'
+export function rgbToHex(color: RGB): string {
+  const channel = (value: number) =>
+    Math.round(Math.min(1, Math.max(0, value)) * 255)
+      .toString(16)
+      .padStart(2, '0')
+  return `#${channel(color.r)}${channel(color.g)}${channel(color.b)}`
+}
+
+// First visible SOLID paint as hex; gradients/images/mixed paints are omitted.
+function solidFillHex(node: SceneNode): string | undefined {
+  if (!('fills' in node)) return undefined
+  const fills = node.fills
+  if (!Array.isArray(fills)) return undefined // figma.mixed
+  const solid = fills.find(
+    (paint) => paint.type === 'SOLID' && paint.visible !== false
+  )
+  return solid && solid.type === 'SOLID' ? rgbToHex(solid.color) : undefined
+}
+
+export const serializeNode = (node: SceneNode): SerializedNode => {
+  const serialized: SerializedNode = {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+    x: node.x,
+    y: node.y,
+  }
+
+  if ('width' in node && 'height' in node) {
+    serialized.width = node.width
+    serialized.height = node.height
+  }
+
+  const fill = solidFillHex(node)
+  if (fill) serialized.fill = fill
+
+  if (node.type === 'TEXT') {
+    const textNode = node as TextNode
+    serialized.text =
+      textNode.characters.length > MAX_TEXT_LENGTH
+        ? `${textNode.characters.slice(0, MAX_TEXT_LENGTH)}…`
+        : textNode.characters
+    if (textNode.fontSize !== figma.mixed) serialized.fontSize = textNode.fontSize
+  }
+
+  if ('children' in node) serialized.childrenCount = node.children.length
+
+  return serialized
+}
 
 export function serializeError(error: unknown): string {
   if (error instanceof Error) return `${error.name}: ${error.message}`
