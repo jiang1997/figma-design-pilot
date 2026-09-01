@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { AgentRunner } from './agent'
 import { ChatStore } from './chat-store'
-import { DEFAULT_BASE_URLS, DEFAULT_MODELS } from './config'
-import { executeInPlugin, getToolDefs } from './plugin-client'
+import {
+  DEFAULT_BASE_URLS,
+  DEFAULT_MODELS,
+  DEFAULT_PROVIDER,
+  PROVIDER_LABELS,
+  connectionLabel,
+} from './config'
+import { executeInPlugin, getToolDefs, randomId } from './plugin-client'
 import { rebuildDisplay } from './protocol'
-import type { DisplayMessage, ProviderType, SavedChat, ToolDef } from './types'
+import type { ApiConfig, DisplayMessage, ProviderType, SavedChat, ToolDef } from './types'
 
 const store = new ChatStore()
 const agentRunner = new AgentRunner()
@@ -26,15 +32,19 @@ function formatElapsed(totalSeconds: number): string {
 }
 
 interface SettingsProps {
-  provider: ProviderType
-  baseUrl: string
-  model: string
-  apiKey: string
-  onProviderChange: (provider: ProviderType) => void
-  onBaseUrlChange: (value: string) => void
-  onModelChange: (value: string) => void
-  onApiKeyChange: (value: string) => void
-  onSave: () => void
+  configs: ApiConfig[]
+  activeConfigId: string | null
+  getApiKey: (configId: string) => string
+  onActivate: (configId: string) => void
+  onDelete: (configId: string) => void
+  onSave: (config: ApiConfig, apiKey: string) => void
+}
+
+interface ConnectionFormProps {
+  config: ApiConfig | null
+  initialApiKey: string
+  onSave: (config: ApiConfig, apiKey: string) => void
+  onCancel: () => void
 }
 
 type AppView = 'chat' | 'history' | 'settings'
@@ -47,28 +57,46 @@ function Icon({ children }: { children: ReactNode }) {
   )
 }
 
-function Settings({
-  provider,
-  baseUrl,
-  model,
-  apiKey,
-  onProviderChange,
-  onBaseUrlChange,
-  onModelChange,
-  onApiKeyChange,
-  onSave,
-}: SettingsProps) {
+function ConnectionForm({ config, initialApiKey, onSave, onCancel }: ConnectionFormProps) {
+  const [name, setName] = useState(config?.name ?? '')
+  const [provider, setProvider] = useState<ProviderType>(config?.provider ?? DEFAULT_PROVIDER)
+  const [model, setModel] = useState(config?.model ?? '')
+  const [baseUrl, setBaseUrl] = useState(config?.baseUrl ?? '')
+  const [apiKey, setApiKey] = useState(initialApiKey)
   const [showApiKey, setShowApiKey] = useState(false)
+
+  const save = () => {
+    onSave(
+      {
+        id: config?.id ?? randomId(),
+        name: name.trim(),
+        provider,
+        model: model.trim(),
+        baseUrl: baseUrl.trim(),
+      },
+      apiKey.trim()
+    )
+  }
 
   return (
     <section className="settings-page">
       <div className="page-heading">
-        <h1>API settings</h1>
+        <h1>{config ? 'Edit connection' : 'Add connection'}</h1>
         <p>Connect the model you want Design Pilot to use.</p>
       </div>
 
       <div className="settings-card">
         <div className="card-title">Model connection</div>
+
+        <label className="field-label" htmlFor="connection-name">Name</label>
+        <input
+          id="connection-name"
+          type="text"
+          value={name}
+          placeholder="Optional, e.g. Team Anthropic"
+          onChange={(event) => setName(event.target.value)}
+        />
+        <p className="field-help">Shown in the chat header switcher. Leave empty to use "Provider · Model".</p>
 
         <label className="field-label" htmlFor="provider">Provider</label>
         <div className="select-wrap">
@@ -76,7 +104,7 @@ function Settings({
             id="provider"
             aria-label="Model provider"
             value={provider}
-            onChange={(event) => onProviderChange(event.target.value as ProviderType)}
+            onChange={(event) => setProvider(event.target.value as ProviderType)}
           >
             <option value="anthropic">Anthropic</option>
             <option value="openai-compatible">OpenAI Compatible</option>
@@ -90,7 +118,7 @@ function Settings({
             type={showApiKey ? 'text' : 'password'}
             value={apiKey}
             placeholder="Enter your API key"
-            onChange={(event) => onApiKeyChange(event.target.value)}
+            onChange={(event) => setApiKey(event.target.value)}
           />
           <button
             className="icon-button reveal-button"
@@ -109,7 +137,7 @@ function Settings({
           type="text"
           value={model}
           placeholder={DEFAULT_MODELS[provider]}
-          onChange={(event) => onModelChange(event.target.value)}
+          onChange={(event) => setModel(event.target.value)}
         />
 
         <label className="field-label" htmlFor="api-url">Base URL</label>
@@ -118,12 +146,117 @@ function Settings({
           type="text"
           value={baseUrl}
           placeholder={DEFAULT_BASE_URLS[provider]}
-          onChange={(event) => onBaseUrlChange(event.target.value)}
+          onChange={(event) => setBaseUrl(event.target.value)}
         />
         <p className="field-help">Leave model and URL empty to use the defaults.</p>
       </div>
 
-      <button className="primary-button settings-save" onClick={onSave}>Save settings</button>
+      <div className="settings-actions">
+        <button className="secondary-button" onClick={onCancel}>Cancel</button>
+        <button className="primary-button settings-save" onClick={save}>
+          {config ? 'Save changes' : 'Add connection'}
+        </button>
+      </div>
+    </section>
+  )
+}
+
+function Settings({ configs, activeConfigId, getApiKey, onActivate, onDelete, onSave }: SettingsProps) {
+  const [formTarget, setFormTarget] = useState<string | null>(null)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+
+  const editingConfig =
+    formTarget !== null && formTarget !== 'new'
+      ? configs.find((config) => config.id === formTarget) ?? null
+      : null
+
+  if (formTarget !== null) {
+    return (
+      <ConnectionForm
+        key={formTarget}
+        config={editingConfig}
+        initialApiKey={editingConfig ? getApiKey(editingConfig.id) : ''}
+        onSave={(config, apiKey) => {
+          onSave(config, apiKey)
+          setFormTarget(null)
+        }}
+        onCancel={() => setFormTarget(null)}
+      />
+    )
+  }
+
+  return (
+    <section className="settings-page">
+      <div className="page-heading">
+        <h1>API settings</h1>
+        <p>Manage the connections Design Pilot can use to talk to models.</p>
+      </div>
+
+      <div className="settings-card">
+        <div className="card-title">Connections</div>
+
+        {configs.length === 0 ? (
+          <div className="settings-empty">No connections yet. Add one to start chatting.</div>
+        ) : (
+          <div className="connection-list">
+            {configs.map((config) => (
+              <div
+                className={`connection-row${config.id === activeConfigId ? ' active' : ''}`}
+                key={config.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => onActivate(config.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') onActivate(config.id)
+                }}
+              >
+                <div className="connection-info">
+                  <div className="connection-name">{connectionLabel(config)}</div>
+                  <div className="connection-meta">
+                    {PROVIDER_LABELS[config.provider]} ·{' '}
+                    {config.model.trim() || DEFAULT_MODELS[config.provider]}
+                    {!getApiKey(config.id).trim() && (
+                      <span className="connection-missing"> · No API key</span>
+                    )}
+                  </div>
+                </div>
+                {config.id === activeConfigId && <span className="active-badge">Active</span>}
+                <div className="connection-actions">
+                  <button
+                    className="connection-edit"
+                    title="Edit this connection"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setFormTarget(config.id)
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className={`connection-delete${pendingDeleteId === config.id ? ' confirm' : ''}`}
+                    title="Delete this connection"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      if (pendingDeleteId === config.id) {
+                        setPendingDeleteId(null)
+                        onDelete(config.id)
+                      } else {
+                        setPendingDeleteId(config.id)
+                      }
+                    }}
+                  >
+                    {pendingDeleteId === config.id ? 'Confirm' : '×'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button className="secondary-button add-connection" onClick={() => setFormTarget('new')}>
+          + Add connection
+        </button>
+      </div>
     </section>
   )
 }
@@ -241,10 +374,6 @@ function Approval({ code, onResolve }: ApprovalProps) {
 }
 
 export function App() {
-  const [provider, setProvider] = useState<ProviderType>('anthropic')
-  const [baseUrl, setBaseUrl] = useState('')
-  const [model, setModel] = useState('')
-  const [apiKey, setApiKey] = useState('')
   const [input, setInput] = useState('')
   const [displayMessages, setDisplayMessages] = useState<DisplayMessage[]>([])
   const [activeView, setActiveView] = useState<AppView>('chat')
@@ -278,13 +407,9 @@ export function App() {
     let active = true
 
     const initialize = async () => {
-      const savedApiKey = await store.load()
+      await store.load()
       if (!active) return
 
-      setProvider(store.settings.provider)
-      setBaseUrl(store.settings.baseUrl)
-      setModel(store.settings.model)
-      setApiKey(savedApiKey)
       setDisplayMessages(rebuildDisplay(store.history))
       store.setChangeListener(() => setStoreRevision((revision) => revision + 1))
       setStateLoaded(true)
@@ -308,16 +433,26 @@ export function App() {
 
   const handleSend = async () => {
     const text = input.trim()
-    const trimmedApiKey = apiKey.trim()
     if (!text || isSending || !stateLoaded) return
 
+    const config = store.activeConfig
+    if (!config) {
+      addDisplayMessage({
+        role: 'assistant',
+        text: 'Add an API connection in settings to start chatting.',
+        isError: true,
+      })
+      return
+    }
+
+    const trimmedApiKey = store.getApiKey(config.id).trim()
     if (!trimmedApiKey) {
       addDisplayMessage({ role: 'assistant', text: 'Enter an API key to continue.', isError: true })
       return
     }
 
-    const resolvedBaseUrl = baseUrl.trim() || DEFAULT_BASE_URLS[provider]
-    const resolvedModel = model.trim() || DEFAULT_MODELS[provider]
+    const resolvedBaseUrl = config.baseUrl.trim() || DEFAULT_BASE_URLS[config.provider]
+    const resolvedModel = config.model.trim() || DEFAULT_MODELS[config.provider]
 
     setInput('')
     addDisplayMessage({ role: 'user', text })
@@ -341,7 +476,7 @@ export function App() {
 
       await agentRunner.run(
         text,
-        { provider, baseUrl: resolvedBaseUrl, apiKey: trimmedApiKey, model: resolvedModel, tools },
+        { provider: config.provider, baseUrl: resolvedBaseUrl, apiKey: trimmedApiKey, model: resolvedModel, tools },
         {
           getHistory: () => store.history,
           appendHistory: (message) => store.append(message),
@@ -395,19 +530,9 @@ export function App() {
     setActiveView('chat')
   }
 
-  const saveSettings = () => {
-    const trimmedBaseUrl = baseUrl.trim()
-    const trimmedModel = model.trim()
-    const trimmedApiKey = apiKey.trim()
-    setBaseUrl(trimmedBaseUrl)
-    setModel(trimmedModel)
-    setApiKey(trimmedApiKey)
-    store.updateSettings({ provider, baseUrl: trimmedBaseUrl, model: trimmedModel })
-    store.saveApiKey(trimmedApiKey)
-    setActiveView('chat')
-  }
-
-  const apiReady = apiKey.trim().length > 0
+  const configs = store.configs
+  const activeConfig = store.activeConfig
+  const apiReady = activeConfig !== null && store.getApiKey(activeConfig.id).trim().length > 0
 
   return (
     <main className="app">
@@ -453,15 +578,12 @@ export function App() {
         <div className="content">
           {activeView === 'settings' ? (
             <Settings
-              provider={provider}
-              baseUrl={baseUrl}
-              model={model}
-              apiKey={apiKey}
-              onProviderChange={setProvider}
-              onBaseUrlChange={setBaseUrl}
-              onModelChange={setModel}
-              onApiKeyChange={setApiKey}
-              onSave={saveSettings}
+              configs={configs}
+              activeConfigId={store.activeConfigId}
+              getApiKey={(configId) => store.getApiKey(configId)}
+              onActivate={(configId) => store.setActiveConfig(configId)}
+              onDelete={(configId) => store.deleteConfig(configId)}
+              onSave={(config, apiKey) => store.upsertConfig(config, apiKey)}
             />
           ) : activeView === 'history' ? (
             <section className="chat-page">
@@ -479,7 +601,25 @@ export function App() {
               <div className="chat-header">
                 <div>
                   <h1>Chat</h1>
-                  <p>{model.trim() || DEFAULT_MODELS[provider]}</p>
+                  {configs.length > 1 ? (
+                    <div className="select-wrap compact">
+                      <select
+                        className="model-switcher"
+                        aria-label="Active API connection"
+                        value={store.activeConfigId ?? ''}
+                        disabled={isSending}
+                        onChange={(event) => store.setActiveConfig(event.target.value)}
+                      >
+                        {configs.map((config) => (
+                          <option key={config.id} value={config.id}>
+                            {connectionLabel(config)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <p>{activeConfig ? connectionLabel(activeConfig) : 'No connection'}</p>
+                  )}
                 </div>
                 <button className="primary-button compact" onClick={startNewChat} disabled={isSending}>New chat</button>
               </div>

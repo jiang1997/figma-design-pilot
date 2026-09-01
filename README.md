@@ -8,10 +8,11 @@ The project is currently distributed as source code for local development. It is
 
 - Agent loop powered by the Vercel AI SDK
 - Anthropic and OpenAI-compatible model providers
-- Configurable model ID and API base URL
+- Multiple saved API connections, each with its own provider, model, base URL, and API key
+- Quick connection switching from the chat header
 - Canvas inspection and restricted node-editing tools
 - Approval dialog before generated plugin code runs
-- Persistent API key, settings, and chat history through `figma.clientStorage`
+- Persistent connections, settings, and chat history through `figma.clientStorage`
 - Multiple saved conversations with resume and delete controls
 - Single-file Figma UI build powered by React and Vite
 
@@ -96,9 +97,9 @@ Messages are passed between these environments with `postMessage`.
 
 Design Pilot sends model requests directly from the plugin UI to the configured API endpoint. There is no project-owned proxy or backend.
 
-- The API key is stored locally using `figma.clientStorage`.
-- Settings and chat history are also stored using `figma.clientStorage`.
-- The API key and conversation content are sent to the provider endpoint selected in Settings.
+- API keys are stored locally using `figma.clientStorage`, one key per saved connection and separate from other plugin data.
+- Connections, chat history, and settings are also stored using `figma.clientStorage`.
+- The active connection's API key and conversation content are sent to the provider endpoint selected in Settings.
 - If you configure a third-party base URL, that service receives the API key and conversation content. Only use endpoints you trust.
 
 Do not commit API keys or other credentials to this repository.

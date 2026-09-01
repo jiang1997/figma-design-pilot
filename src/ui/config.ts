@@ -1,4 +1,4 @@
-import type { ProviderType } from './types'
+import type { ApiConfig, ProviderType } from './types'
 
 export const DEFAULT_PROVIDER: ProviderType = 'anthropic'
 export const DEFAULT_BASE_URLS: Record<ProviderType, string> = {
@@ -8,6 +8,16 @@ export const DEFAULT_BASE_URLS: Record<ProviderType, string> = {
 export const DEFAULT_MODELS: Record<ProviderType, string> = {
   anthropic: 'claude-sonnet-4-6',
   'openai-compatible': 'gpt-4.1',
+}
+export const PROVIDER_LABELS: Record<ProviderType, string> = {
+  anthropic: 'Anthropic',
+  'openai-compatible': 'OpenAI Compatible',
+}
+
+export function connectionLabel(config: ApiConfig): string {
+  const name = config.name.trim()
+  if (name) return name
+  return `${PROVIDER_LABELS[config.provider]} · ${config.model.trim() || DEFAULT_MODELS[config.provider]}`
 }
 export const MAX_OUTPUT_TOKENS = 4096
 export const MAX_AGENT_STEPS = 10

@@ -40,3 +40,20 @@ export interface StorageStateV2 {
   chats: SavedChat[]
   currentChatId: string | null
 }
+
+export interface ApiConfig {
+  id: string
+  name: string
+  provider: ProviderType
+  model: string
+  baseUrl: string
+}
+
+export interface StorageStateV3 {
+  version: 3
+  configs: ApiConfig[]
+  activeConfigId: string | null
+  skills: Skill[]
+  chats: SavedChat[]
+  currentChatId: string | null
+}

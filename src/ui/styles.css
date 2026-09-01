@@ -101,8 +101,8 @@ h1, h2, p { margin: 0; }
 .card-title { margin-bottom: 14px; font-size: 12px; font-weight: 650; }
 .field-label { display: block; margin: 12px 0 5px; color: #53545a; font-size: 10px; font-weight: 600; }
 .field-label:first-of-type { margin-top: 0; }
-#provider, #api-url, #model, #api-key { width: 100%; height: 34px; padding: 0 9px; border: 1px solid #dedee2; border-radius: 7px; outline: 0; color: #2f3035; background: #fff; }
-#provider:focus, #api-url:focus, #model:focus, #api-key:focus { border-color: #8f70df; box-shadow: 0 0 0 2px #f0eafd; }
+#provider, #api-url, #model, #api-key, #connection-name { width: 100%; height: 34px; padding: 0 9px; border: 1px solid #dedee2; border-radius: 7px; outline: 0; color: #2f3035; background: #fff; }
+#provider:focus, #api-url:focus, #model:focus, #api-key:focus, #connection-name:focus { border-color: #8f70df; box-shadow: 0 0 0 2px #f0eafd; }
 .select-wrap { position: relative; }
 .select-wrap select { appearance: none; padding-right: 28px; }
 .select-wrap::after { content: "⌄"; position: absolute; right: 10px; top: 7px; color: #777980; pointer-events: none; }
@@ -111,6 +111,32 @@ h1, h2, p { margin: 0; }
 .icon-button.reveal-button { position: absolute; right: 4px; top: 4px; height: 26px; padding: 0 7px; border: 0; border-radius: 5px; color: #6d54ad; background: #f4f0fc; font-size: 9px; }
 .field-help { margin-top: 5px; color: #9a9ba1; font-size: 9px; line-height: 1.35; }
 .settings-save { width: 100%; min-height: 34px; margin-top: 12px; }
+.settings-actions { display: flex; gap: 8px; margin-top: 12px; }
+.settings-actions .settings-save { flex: 1; width: auto; margin-top: 0; }
+.settings-actions .secondary-button { min-height: 34px; }
+.connection-list { display: flex; flex-direction: column; gap: 6px; }
+.connection-row { display: flex; align-items: center; gap: 7px; padding: 9px 10px; border: 1px solid #e8e8eb; border-radius: 8px; cursor: pointer; }
+.connection-row:focus-visible { outline: 2px solid #6840d5; outline-offset: 1px; }
+.connection-row:hover { background: #fafafa; }
+.connection-row.active { border-color: #c8b7f2; background: #faf8ff; }
+.connection-info { flex: 1; min-width: 0; }
+.connection-name { color: #35363a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.connection-meta { margin-top: 3px; color: #9b9ca2; font-size: 10px; }
+.connection-missing { color: #bd2837; }
+.active-badge { padding: 2px 6px; border-radius: 5px; color: #6d54ad; background: #f4f0fc; font-size: 9px; font-weight: 600; }
+.connection-actions { display: flex; gap: 4px; }
+.connection-edit { padding: 3px 7px; border: 0; border-radius: 5px; color: #6d54ad; background: transparent; font-size: 11px; }
+.connection-edit:hover { background: #f4f0fc; }
+.connection-delete { padding: 3px 7px; border: 0; border-radius: 5px; color: #97989d; background: transparent; font-size: 11px; }
+.connection-delete:hover { color: #bd2837; background: #fff0f1; }
+.connection-delete.confirm { color: #fff; background: #d13b49; }
+.settings-empty { padding: 14px 0; color: #999ba1; font-size: 11px; text-align: center; }
+.add-connection { width: 100%; min-height: 30px; margin-top: 10px; }
+.select-wrap.compact::after { top: 1px; right: 0; }
+.model-switcher { padding: 1px 14px 1px 0; border: 0; outline: 0; color: #95969c; background: transparent; font-size: 10px; cursor: pointer; }
+.model-switcher:hover { color: #4f2cb8; }
+.model-switcher:disabled { opacity: .5; cursor: default; }
+.model-switcher option { color: #202124; }
 
 @media (max-width: 300px) {
   .connection-status { display: none; }

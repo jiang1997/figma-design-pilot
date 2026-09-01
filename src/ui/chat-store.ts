@@ -1,11 +1,14 @@
 import type { AssistantContent, ModelMessage, ToolResultPart } from 'ai'
 import { randomId, storageDelete, storageGet, storageSet } from './plugin-client'
-import type { SavedChat, StorageStateV2 } from './types'
+import { DEFAULT_PROVIDER } from './config'
+import type { ApiConfig, SavedChat, StorageStateV2, StorageStateV3 } from './types'
 
-const API_KEY_STORAGE_KEY = 'ai-api-key'
-const STATE_STORAGE_KEY = 'chat-state-v2'
+const STATE_STORAGE_KEY = 'chat-state-v3'
+const API_KEY_PREFIX = 'api-key:'
+const LEGACY_SINGLE_API_KEY_STORAGE_KEY = 'ai-api-key'
 const LEGACY_API_KEY_STORAGE_KEY = 'anthropic-api-key'
-const LEGACY_STATE_STORAGE_KEY = 'chat-state-v1'
+const LEGACY_STATE_V2_STORAGE_KEY = 'chat-state-v2'
+const LEGACY_STATE_V1_STORAGE_KEY = 'chat-state-v1'
 const LEGACY_STORAGE_KEYS = {
   baseUrl: 'anthropic-api-url',
   model: 'anthropic-model',
@@ -40,10 +43,15 @@ interface LegacyStateV1 {
   currentChatId: string | null
 }
 
-function defaultState(): StorageStateV2 {
+function apiKeyStorageKey(configId: string): string {
+  return API_KEY_PREFIX + configId
+}
+
+function defaultState(): StorageStateV3 {
   return {
-    version: 2,
-    settings: { provider: 'anthropic', model: '', baseUrl: '' },
+    version: 3,
+    configs: [],
+    activeConfigId: null,
     skills: [],
     chats: [],
     currentChatId: null,
@@ -139,8 +147,40 @@ function migrateState(state: LegacyStateV1): StorageStateV2 {
   }
 }
 
+async function buildSeedConfig(settings: StorageStateV2['settings']): Promise<ApiConfig | null> {
+  const hasSettings = Boolean(
+    settings.model.trim() || settings.baseUrl.trim() || settings.provider !== DEFAULT_PROVIDER
+  )
+  if (!hasSettings) {
+    const [singleKey, legacyKey] = await Promise.all([
+      storageGet(LEGACY_SINGLE_API_KEY_STORAGE_KEY),
+      storageGet(LEGACY_API_KEY_STORAGE_KEY),
+    ])
+    if (!singleKey && !legacyKey) return null
+  }
+  return {
+    id: randomId(),
+    name: '',
+    provider: settings.provider,
+    model: settings.model,
+    baseUrl: settings.baseUrl,
+  }
+}
+
+function migrateV2ToV3(state: StorageStateV2, seedConfig: ApiConfig | null): StorageStateV3 {
+  return {
+    version: 3,
+    configs: seedConfig ? [seedConfig] : [],
+    activeConfigId: seedConfig ? seedConfig.id : null,
+    skills: state.skills ?? [],
+    chats: state.chats,
+    currentChatId: state.currentChatId,
+  }
+}
+
 export class ChatStore {
-  private state: StorageStateV2 = defaultState()
+  private state: StorageStateV3 = defaultState()
+  private apiKeys = new Map<string, string>()
   private messageHistory: ModelMessage[] = []
   private activeChatId: string | null = null
   private chatCreatedAt = 0
@@ -160,17 +200,30 @@ export class ChatStore {
     return this.activeChatId
   }
 
-  get settings(): StorageStateV2['settings'] {
-    return this.state.settings
+  get configs(): ApiConfig[] {
+    return this.state.configs
+  }
+
+  get activeConfigId(): string | null {
+    return this.state.activeConfigId
+  }
+
+  get activeConfig(): ApiConfig | null {
+    return this.state.configs.find((config) => config.id === this.state.activeConfigId) ?? null
   }
 
   setChangeListener(listener: () => void): void {
     this.changeListener = listener
   }
 
-  async load(): Promise<string> {
+  getApiKey(configId: string): string {
+    return this.apiKeys.get(configId) ?? ''
+  }
+
+  async load(): Promise<void> {
     try {
       this.state = await this.loadState()
+      this.sanitizeState()
       const current = this.state.chats.find((chat) => chat.id === this.state.currentChatId)
       if (current) {
         this.activeChatId = current.id
@@ -178,18 +231,19 @@ export class ChatStore {
         this.messageHistory = cloneMessages(current.messages)
       }
 
-      const apiKey = await storageGet(API_KEY_STORAGE_KEY)
-      if (apiKey) return apiKey
-      const legacyApiKey = await storageGet(LEGACY_API_KEY_STORAGE_KEY)
-      if (legacyApiKey) {
-        await storageSet(API_KEY_STORAGE_KEY, legacyApiKey)
-        await storageDelete(LEGACY_API_KEY_STORAGE_KEY)
-      }
-      return legacyApiKey
+      const entries = await Promise.all(
+        this.state.configs.map(async (config) => {
+          const key = await storageGet(apiKeyStorageKey(config.id))
+          return [config.id, key] as const
+        })
+      )
+      this.apiKeys = new Map(entries.filter(([, key]) => key !== ''))
+
+      await this.migrateLegacyApiKey()
     } catch (error) {
       console.warn('[storage] load failed:', error)
       this.state = defaultState()
-      return ''
+      this.apiKeys = new Map()
     } finally {
       this.loaded = true
     }
@@ -224,13 +278,43 @@ export class ChatStore {
     this.checkpoint()
   }
 
-  updateSettings(settings: Partial<StorageStateV2['settings']>): void {
-    this.state.settings = { ...this.state.settings, ...settings }
+  upsertConfig(config: ApiConfig, apiKey: string): void {
+    const index = this.state.configs.findIndex((candidate) => candidate.id === config.id)
+    if (index === -1) {
+      this.state.configs.push(config)
+      this.state.activeConfigId = config.id
+    } else {
+      this.state.configs[index] = config
+    }
+
+    const trimmedKey = apiKey.trim()
+    if (trimmedKey) this.apiKeys.set(config.id, trimmedKey)
+    else this.apiKeys.delete(config.id)
+
+    this.checkpoint()
+    this.queueStorageWrite(() =>
+      trimmedKey
+        ? storageSet(apiKeyStorageKey(config.id), trimmedKey)
+        : storageDelete(apiKeyStorageKey(config.id))
+    )
+  }
+
+  deleteConfig(configId: string): void {
+    this.state.configs = this.state.configs.filter((config) => config.id !== configId)
+    if (this.state.activeConfigId === configId) {
+      this.state.activeConfigId = this.state.configs[0]?.id ?? null
+    }
+    this.apiKeys.delete(configId)
+
+    this.queueStorageWrite(() => storageDelete(apiKeyStorageKey(configId)))
     this.checkpoint()
   }
 
-  saveApiKey(apiKey: string): void {
-    void storageSet(API_KEY_STORAGE_KEY, apiKey)
+  setActiveConfig(configId: string): void {
+    if (configId === this.state.activeConfigId) return
+    if (!this.state.configs.some((config) => config.id === configId)) return
+    this.state.activeConfigId = configId
+    this.checkpoint()
   }
 
   private resetCurrentChat(): void {
@@ -263,36 +347,81 @@ export class ChatStore {
     this.state.currentChatId = this.activeChatId
   }
 
+  private queueStorageWrite(operation: () => Promise<void>): void {
+    this.persistChain = this.persistChain
+      .then(operation)
+      .catch((error) => console.warn('[storage] persist failed:', error))
+  }
+
   private checkpoint(): void {
     if (!this.loaded) return
     this.syncCurrentChat()
     const snapshot = JSON.stringify(this.state)
-    this.persistChain = this.persistChain
-      .then(() => storageSet(STATE_STORAGE_KEY, snapshot))
-      .catch((error) => console.warn('[storage] persist failed:', error))
+    this.queueStorageWrite(() => storageSet(STATE_STORAGE_KEY, snapshot))
     this.changeListener?.()
   }
 
-  private async loadState(): Promise<StorageStateV2> {
+  // A v2→v3 migration persists the new state before the api key is forwarded,
+  // so every load falls back to the legacy key slots until that completes.
+  private async migrateLegacyApiKey(): Promise<void> {
+    const activeId = this.state.activeConfigId
+    if (!activeId || this.apiKeys.get(activeId)) return
+
+    const singleKey = await storageGet(LEGACY_SINGLE_API_KEY_STORAGE_KEY)
+    const legacyKey = singleKey || await storageGet(LEGACY_API_KEY_STORAGE_KEY)
+    if (!legacyKey) return
+
+    this.apiKeys.set(activeId, legacyKey)
+    await storageSet(apiKeyStorageKey(activeId), legacyKey)
+    await storageDelete(LEGACY_SINGLE_API_KEY_STORAGE_KEY)
+    await storageDelete(LEGACY_API_KEY_STORAGE_KEY)
+  }
+
+  private sanitizeState(): void {
+    const ids = new Set(this.state.configs.map((config) => config.id))
+    if (this.state.activeConfigId && !ids.has(this.state.activeConfigId)) {
+      this.state.activeConfigId = this.state.configs[0]?.id ?? null
+    }
+  }
+
+  private async loadState(): Promise<StorageStateV3> {
     const raw = await storageGet(STATE_STORAGE_KEY)
     if (raw) {
       try {
-        const parsed = JSON.parse(raw) as StorageStateV2
-        if (parsed.version === 2) return parsed
+        const parsed = JSON.parse(raw) as StorageStateV3
+        if (parsed.version === 3 && Array.isArray(parsed.configs)) return parsed
       } catch {
-        // If the current state is corrupt, continue by trying to migrate the legacy state.
+        // If the current state is corrupt, continue by trying legacy states.
       }
-      console.warn('[storage] unrecognized v2 state, trying legacy state')
+      console.warn('[storage] unrecognized v3 state, trying legacy state')
     }
 
-    const legacyRaw = await storageGet(LEGACY_STATE_STORAGE_KEY)
-    if (legacyRaw) {
+    const v2Raw = await storageGet(LEGACY_STATE_V2_STORAGE_KEY)
+    if (v2Raw) {
       try {
-        const legacy = JSON.parse(legacyRaw) as LegacyStateV1
-        if (legacy.version === 1) {
-          const migrated = migrateState(legacy)
+        const v2 = JSON.parse(v2Raw) as StorageStateV2
+        if (v2.version === 2) {
+          const seedConfig = await buildSeedConfig(v2.settings)
+          const migrated = migrateV2ToV3(v2, seedConfig)
           await storageSet(STATE_STORAGE_KEY, JSON.stringify(migrated))
-          await storageDelete(LEGACY_STATE_STORAGE_KEY)
+          await storageDelete(LEGACY_STATE_V2_STORAGE_KEY)
+          return migrated
+        }
+      } catch {
+        console.warn('[storage] v2 state is corrupt, trying older state')
+      }
+    }
+
+    const v1Raw = await storageGet(LEGACY_STATE_V1_STORAGE_KEY)
+    if (v1Raw) {
+      try {
+        const legacy = JSON.parse(v1Raw) as LegacyStateV1
+        if (legacy.version === 1) {
+          const v2 = migrateState(legacy)
+          const seedConfig = await buildSeedConfig(v2.settings)
+          const migrated = migrateV2ToV3(v2, seedConfig)
+          await storageSet(STATE_STORAGE_KEY, JSON.stringify(migrated))
+          await storageDelete(LEGACY_STATE_V1_STORAGE_KEY)
           return migrated
         }
       } catch {
@@ -304,9 +433,19 @@ export class ChatStore {
       storageGet(LEGACY_STORAGE_KEYS.baseUrl),
       storageGet(LEGACY_STORAGE_KEYS.model),
     ])
-    const migrated = defaultState()
-    if (baseUrl) migrated.settings.baseUrl = baseUrl.replace(/\/+$/, '').replace(/\/messages$/, '')
-    if (model) migrated.settings.model = model
+    const v2: StorageStateV2 = {
+      version: 2,
+      settings: {
+        provider: 'anthropic',
+        model,
+        baseUrl: baseUrl.replace(/\/+$/, '').replace(/\/messages$/, ''),
+      },
+      skills: [],
+      chats: [],
+      currentChatId: null,
+    }
+    const seedConfig = await buildSeedConfig(v2.settings)
+    const migrated = migrateV2ToV3(v2, seedConfig)
     await storageSet(STATE_STORAGE_KEY, JSON.stringify(migrated))
     await storageDelete(LEGACY_STORAGE_KEYS.baseUrl)
     await storageDelete(LEGACY_STORAGE_KEYS.model)
