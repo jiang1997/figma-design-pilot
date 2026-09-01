@@ -12,13 +12,6 @@ button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 
 .app { height: 100%; display: flex; flex-direction: column; background: #fff; }
-.topbar { height: 48px; flex: 0 0 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid #ececef; }
-.brand { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 650; letter-spacing: -.01em; }
-.brand-mark { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; color: #fff; background: linear-gradient(145deg, #8257f5, #5e35d6); box-shadow: 0 2px 5px rgba(92, 53, 214, .22); font-size: 11px; font-weight: 750; }
-.connection-status { display: flex; align-items: center; gap: 5px; color: #8a8b91; font-size: 10px; }
-.status-dot { width: 6px; height: 6px; border-radius: 50%; background: #b8b9be; }
-.connection-status.ready { color: #34735a; }
-.connection-status.ready .status-dot { background: #35a56f; box-shadow: 0 0 0 2px #e2f5eb; }
 
 .app-body { min-height: 0; flex: 1; display: flex; }
 .sidebar { width: 48px; flex: 0 0 48px; padding: 10px 7px; border-right: 1px solid #ececef; background: #fafafa; display: flex; flex-direction: column; gap: 6px; }
@@ -33,6 +26,10 @@ button { cursor: pointer; }
 h1, h2, p { margin: 0; }
 .chat-header h1, .page-heading h1 { font-size: 15px; line-height: 20px; font-weight: 650; letter-spacing: -.015em; }
 .chat-header p { margin-top: 1px; color: #95969c; font-size: 10px; }
+.connection-line { display: flex; align-items: center; gap: 5px; margin-top: 1px; min-height: 15px; }
+.connection-line .status-dot { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: #b8b9be; }
+.connection-line .status-dot.ready { background: #35a56f; box-shadow: 0 0 0 2px #e2f5eb; }
+.connection-label { color: #95969c; font-size: 10px; }
 .header-actions { display: flex; gap: 6px; }
 .primary-button, .secondary-button { min-height: 30px; padding: 0 11px; border-radius: 7px; font-weight: 550; }
 .primary-button { border: 1px solid #5d35c9; color: #fff; background: #6840d5; box-shadow: 0 1px 2px rgba(51, 28, 113, .16); }
@@ -139,6 +136,5 @@ h1, h2, p { margin: 0; }
 .model-switcher option { color: #202124; }
 
 @media (max-width: 300px) {
-  .connection-status { display: none; }
   .settings-page { padding-inline: 12px; }
 }

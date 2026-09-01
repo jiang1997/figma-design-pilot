@@ -536,17 +536,6 @@ export function App() {
 
   return (
     <main className="app">
-      <header className="topbar">
-        <div className="brand">
-          <span className="brand-mark">D</span>
-          <span>Design Pilot</span>
-        </div>
-        <div className={`connection-status ${apiReady ? 'ready' : ''}`}>
-          <span className="status-dot" />
-          {apiReady ? 'Connected' : 'Not configured'}
-        </div>
-      </header>
-
       <div className="app-body">
         <nav className="sidebar" aria-label="Main menu">
           <button
@@ -601,25 +590,33 @@ export function App() {
               <div className="chat-header">
                 <div>
                   <h1>Chat</h1>
-                  {configs.length > 1 ? (
-                    <div className="select-wrap compact">
-                      <select
-                        className="model-switcher"
-                        aria-label="Active API connection"
-                        value={store.activeConfigId ?? ''}
-                        disabled={isSending}
-                        onChange={(event) => store.setActiveConfig(event.target.value)}
-                      >
-                        {configs.map((config) => (
-                          <option key={config.id} value={config.id}>
-                            {connectionLabel(config)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  ) : (
-                    <p>{activeConfig ? connectionLabel(activeConfig) : 'No connection'}</p>
-                  )}
+                  <div className="connection-line">
+                    <span
+                      className={`status-dot${apiReady ? ' ready' : ''}`}
+                      title={apiReady ? 'Connected' : 'Not configured'}
+                    />
+                    {configs.length > 1 ? (
+                      <div className="select-wrap compact">
+                        <select
+                          className="model-switcher"
+                          aria-label="Active API connection"
+                          value={store.activeConfigId ?? ''}
+                          disabled={isSending}
+                          onChange={(event) => store.setActiveConfig(event.target.value)}
+                        >
+                          {configs.map((config) => (
+                            <option key={config.id} value={config.id}>
+                              {connectionLabel(config)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <span className="connection-label">
+                        {activeConfig ? connectionLabel(activeConfig) : 'No connection'}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <button className="primary-button compact" onClick={startNewChat} disabled={isSending}>New chat</button>
               </div>
