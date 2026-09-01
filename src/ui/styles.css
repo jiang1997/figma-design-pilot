@@ -83,6 +83,9 @@ h1, h2, p { margin: 0; }
 .send-button:hover { background: #5932c3; }
 .send-button:disabled { color: #b8b2c9; background: #eeeaf5; cursor: default; }
 #stop { background: #d13b49; font-size: 10px; }
+.run-timer { display: flex; flex: 0 0 auto; align-items: center; gap: 5px; height: 22px; margin-bottom: 4px; padding: 0 8px; border-radius: 6px; color: #6d54ad; background: #f4f0fc; font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.timer-dot { width: 6px; height: 6px; border-radius: 50%; background: #6840d5; animation: timer-pulse 1.2s ease-in-out infinite; }
+@keyframes timer-pulse { 50% { opacity: .3; } }
 
 #confirm { margin: 0 12px 10px; padding: 9px; border: 1px solid #efcf8d; border-radius: 8px; background: #fff9ea; }
 .confirm-title { margin-bottom: 5px; color: #855e10; font-weight: 650; }

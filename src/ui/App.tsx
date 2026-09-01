@@ -18,6 +18,13 @@ function formatTime(timestamp: number): string {
   })
 }
 
+function formatElapsed(totalSeconds: number): string {
+  if (totalSeconds < 60) return `${totalSeconds}s`
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
 interface SettingsProps {
   provider: ProviderType
   baseUrl: string
@@ -247,6 +254,8 @@ export function App() {
   const [approvalCode, setApprovalCode] = useState<string | null>(null)
   const approvalResolver = useRef<((approved: boolean) => void) | null>(null)
   const stopRequested = useRef(false)
+  const [runStartedAt, setRunStartedAt] = useState<number | null>(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
 
   const addDisplayMessage = useCallback((message: DisplayMessage) => {
     setDisplayMessages((current) => [...current, message])
@@ -289,6 +298,14 @@ export function App() {
     }
   }, [])
 
+  useEffect(() => {
+    if (runStartedAt === null) return
+    const updateElapsed = () => setElapsedSeconds(Math.floor((Date.now() - runStartedAt) / 1000))
+    updateElapsed()
+    const interval = setInterval(updateElapsed, 1000)
+    return () => clearInterval(interval)
+  }, [runStartedAt])
+
   const handleSend = async () => {
     const text = input.trim()
     const trimmedApiKey = apiKey.trim()
@@ -306,6 +323,7 @@ export function App() {
     addDisplayMessage({ role: 'user', text })
     setActiveView('chat')
     setIsSending(true)
+    setRunStartedAt(Date.now())
     stopRequested.current = false
 
     try {
@@ -342,6 +360,7 @@ export function App() {
       })
     } finally {
       setIsSending(false)
+      setRunStartedAt(null)
     }
   }
 
@@ -485,6 +504,12 @@ export function App() {
                   onChange={(event) => setInput(event.target.value)}
                   onKeyDown={handleInputKeyDown}
                 />
+                {isSending && (
+                  <span className="run-timer" title="Agent run elapsed time">
+                    <span className="timer-dot" aria-hidden="true" />
+                    {formatElapsed(elapsedSeconds)}
+                  </span>
+                )}
                 {isSending ? (
                   <button id="stop" className="send-button" onClick={handleStop} aria-label="Stop">■</button>
                 ) : (
